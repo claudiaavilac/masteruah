@@ -1,0 +1,296 @@
+---
+title: "Analisis de ciclistas Montreal"
+author: "Claudia Avila Cueva"
+date: "05 de febrero de 2019"
+output:  
+  ioslides_presentation: default
+  slidy_presentation: default
+  beamer_presentation: default
+---
+## El conjunto de datos **comptagevelo2017.csv** contiene informacion sobre:
+el número de personas que circulan en bicicleta por cada uno de los distritos
+de la ciudad de Montreal a lo largo del año 2017 (http://donnees.ville.montreal.qc.ca/dataset/velos-comptage). En este conjunto de datos, las filas representan los dias del año y las columnas cada uno de los distritos. La columna 2 contiene un timestamp que vamos a ignorar. Sobre este conjunto
+de datos:
+
+```{r results='asis', echo=FALSE, include=FALSE,}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE)
+
+# Limpiamos la memoria
+rm(list=ls(all=TRUE))
+
+
+setwd("~/master_data_science/2.herramientas/modulo_r/examen PEC 2")
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(readr)
+library(stringr)
+library(magrittr)
+library(dplyr)
+library(tibble)
+library(lubridate)
+
+```
+
+1. Leer el fichero **comptagevelo2017.csv** como un dataframe. 
+
+
+```{r echo = TRUE, warning = FALSE}
+data <- read_csv("comptagevelo2017.csv", col_types = cols())
+```
+2. Eliminar la columna 2 del dataframe.
+```{r}
+data %<>%
+  select(everything(), -2)
+
+```
+
+3.  Identifcar cuáles son las variables que estan contenidas en
+el dataframe. A continuacion, transformar ese dataframe para que
+cada columna represente una unica variable.
+```{r}
+data %<>%
+    gather(barrios, nciclistas,-Date)
+
+data
+```
+
+
+4. Crear tres nuevas variables en el dataframe que contengan
+la informacion del dia, mes y año respectivamente (manteniendo la
+columna *Date*)
+
+```{r}
+data %<>%
+  mutate(Date= as.Date(Date, "%d/%m/%Y")) %>%
+  mutate(anyo=year(Date), mes=month(Date), dia=day(Date)) 
+
+data
+
+#en caso se quiera los nombres de mes y dia:
+# mutate(nmes=months(Date), ndia=weekdays(Date))
+```
+
+## 
+5.  Convertir la columna *Date* a tipo date.
+
+```{r}
+  data %<>%
+  mutate(Date= as.Date(Date, "%d/%m/%Y"))
+
+```
+6. Modifcar la columna de los distritos para eliminar los espacios
+alrededor de "/".
+
+```{r}
+#observamos cómo estan inicialmente:
+unique(data$barrios)
+
+#los modificamos
+  data$barrios %<>%
+  str_replace_all(" / ", "/")
+
+#verificamos se hayan modificado
+unique(data$barrios)
+```
+## 
+7. Calcular el porcentaje de dias en los que faltan datos para
+cada uno de los distritos.
+
+```{r}
+#calculamos el porcentaje
+data %>%
+  group_by(barrios)%>%
+  summarise(porcent_nulos=sum(is.na(nciclistas))*100/length(nciclistas),
+            total_nulos=sum(is.na(nciclistas)), total_observac=length(nciclistas))%>%
+             filter(porcent_nulos != 0)
+
+#Solo hemos calculado total_nulos y total_observac para validar que el porcentaje sea el correcto. Por ejemplo, en el caso de Boyer se observa que (2/365)*100=0.5479
+```
+## 
+8. Calcular el total de ciclistas que pasa por cada uno de los
+distritos a lo largo de todo el año.
+```{r}
+data %>%
+  group_by(barrios)%>%
+  summarise(total_ciclistas=sum(nciclistas, na.rm = TRUE)) -> sum_ciclistas
+
+sum_ciclistas
+```
+
+## 
+9. ¿Cuales son los cinco distritos con mas numero de ciclistas?
+```{r}
+sum_ciclistas %>%
+  arrange(desc(total_ciclistas))%>%
+  slice(1:5) -> top5_barrios
+
+top5_barrios
+```
+## 
+10. Realizar un gráfico de barras **horizontales** donde el eje x
+representa el total de ciclistas y el eje y los distritos.
+
+```{r}
+
+ggplot(data=sum_ciclistas,aes(x=barrios, y=total_ciclistas, fill=barrios))+
+  geom_bar(stat="identity")+
+  coord_flip()->grafico1
+
+grafico1
+```
+
+## 
+11. Realizar un grafico de lineas con la evolución mensual de
+ciclistas para cada distrito. En el gráfico tiene que aparecer una linea
+por distrito.
+
+```{r}
+
+data %>%
+  group_by(barrios,mes)%>%
+  summarise(total_ciclistas=sum(nciclistas, na.rm = TRUE))  %>%
+  ggplot()+
+  geom_line(aes(x=mes,y=total_ciclistas, color = barrios))+
+  scale_x_continuous(breaks=seq(1,12,1))+
+  xlab("Meses") +
+  ylab("Total ciclistas por mes") -> grafico2
+
+grafico2
+
+```
+
+
+
+## 
+12. Ordenar las barras del gráfico del punto 10 de mayor (arriba)
+a menor (abajo) segun el numero de ciclistas.
+
+```{r}
+grafico1 +
+  aes(x=reorder(barrios,total_ciclistas), y=total_ciclistas)+
+  xlab("Distritos") +
+  ylab("Total Ciclistas")
+
+#solo se incluye un signo - en "reorder(barrios,-total_ciclistas)" para ordenar de menor a mayor
+```
+
+## 
+13. Añadir sobre el grafico del punto 11 una linea de color azul
+y mas ancha que el resto con la media de ciclistas por mes.
+
+```{r}
+# primer modo: incluyendo la media general 
+  grafico2 +
+  geom_smooth(aes(x=mes,y=mean(total_ciclistas)),formula = y ~ x, 
+  size = 2) 
+
+```
+```{r}
+# segundo modo: incluyendo la media por cada mes
+grafico2 +
+  aes(x=mes,y=total_ciclistas) +
+  stat_summary(fun.y=mean,geom="line", color="blue", size=2)
+
+
+```
+
+## 
+14.Grafico de barras del numero de ciclistas para
+cada dia de la semana en cada uno de los cinco distritos con mas
+ciclistas (usando facetas).
+
+```{r}
+data %>%
+  mutate(ndia=wday(Date,label =  TRUE, abbr= FALSE))%>%
+  group_by(barrios,ndia)%>%
+  summarise(total_ciclistas=sum(nciclistas, na.rm = TRUE)) %>%
+  filter(barrios %in% top5_barrios$barrios) %>%
+  ggplot() +
+  geom_bar(aes(x=ndia,y=total_ciclistas, fill= barrios),
+           stat="identity")+
+  facet_wrap(~barrios)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  xlab("Dia de la semana")
+
+
+```
+
+## 
+15.Completar los *missing values* de la columna que representa
+el numero de ciclistas con la media del resto de datos de esa variable
+pero agrupado por distrito y mes. 
+
+```{r}
+data %>% 
+  group_by(barrios, mes)%>% 
+  mutate(media_ciclistas = mean(nciclistas, na.rm = TRUE))%>%
+  mutate(nciclistas_imput = ifelse (is.na(nciclistas), media_ciclistas, nciclistas))        ->data.clean   
+
+#hay 119 nulos
+sum(is.na(data.clean$nciclistas))
+#no se imputaron 61 nulos porque no había datos de la media para esos casos barrio-mes
+sum(is.na(data.clean$nciclistas_imput))
+
+#verificamos en la data con los datos que nos importan
+data.clean=select(data.clean,-anyo,-dia)
+data.clean
+```
+
+## 
+16. Leer el fichero localisationcompteursvelo2015.csv. **Importante:** la codificacion del fichero no es UTF-8 sino ISO-8859-1.
+
+```{r echo = TRUE, warning = FALSE}
+
+df16 <- read_csv("localisationcompteursvelo2015.csv", locale = locale(encoding = "ISO-8859-1"), col_types = cols())
+
+```
+
+## 
+17.  Realizar un grafico de puntos de las columnas **coord_X**
+(eje x) y **coord_Y** (eje y), con el color de los puntos representando la
+variable **Type** y la forma la variable **Etat**.
+
+```{r}
+df16 %>%
+  ggplot() +
+  geom_point(aes(x = coord_X, y = coord_Y, color=Type, shape = Etat))
+
+```
+
+## 
+18. Hacer un join de los dos dataframes por las columnas con
+los nombres del distrito en el primer dataframe y **"nom_comptage"** en
+el segundo.
+
+```{r}
+
+data_join=full_join(data,df16,by=c("barrios"="nom_comptage"))
+data_join
+```
+
+## 
+19. ¿Ver qué districtos del primer dataframe no se encuentran
+en el segundo?
+
+```{r}
+data_join %>%
+  group_by(barrios, nom) %>%
+  filter(is.na(nom)) %>%
+  summarize()
+
+```
+
+## 
+20. Realizar un grafico de puntos del dataframe resultante del
+ejercicio 18 de las columnas **coord_X** (eje x) y **coord_Y** (eje y), donde
+el tamaño de los puntos representa el numero total de ciclistas que
+pasaron por ese distrito a lo largo de todo el año.
+
+```{r}
+data_join %>% 
+    group_by(barrios)%>% 
+    mutate(sum_ciclistas=sum(nciclistas, na.rm = TRUE))%>%
+  ggplot(aes(x = coord_X, y = coord_Y)) +
+    geom_point(aes(color = barrios, size = sum_ciclistas), stat = "identity", na.rm = TRUE) 
+```
